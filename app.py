@@ -83,7 +83,6 @@ def upload():
     base64_data = data["base64"]
     mime_type = data.get("mime_type", "image/jpeg")
     
-    # 从MIME类型获取扩展名
     ext_map = {
         "image/png": ".png",
         "image/jpeg": ".jpg",
@@ -94,18 +93,22 @@ def upload():
     ext = ext_map.get(mime_type, ".jpg")
     
     try:
+        # 处理Base64字符串，可能包含data URI前缀
+        if "," in base64_data:
+            base64_data = base64_data.split(",")[1]
+        
+        # 确保是ASCII字符，去除空白
+        base64_data = "".join(base64_data.split())
+        
         # 解码Base64
         image_data = base64.b64decode(base64_data)
         
-        # 生成唯一文件名
         filename = f"{uuid.uuid4().hex}{ext}"
         filepath = os.path.join(UPLOAD_FOLDER, filename)
         
-        # 保存文件
         with open(filepath, "wb") as f:
             f.write(image_data)
         
-        # 返回访问URL
         image_url = url_for("get_image", filename=filename, _external=True)
         
         return jsonify({
