@@ -132,6 +132,93 @@ def health():
     return jsonify({"status": "ok"})
 
 
+@app.route("/upload-file", methods=["POST"])
+def upload_file():
+    """上传本地图片文件，返回访问URL"""
+    if "file" not in request.files:
+        return jsonify({"error": "缺少file参数"}), 400
+    
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "文件名为空"}), 400
+    
+    try:
+        # 获取文件扩展名
+        ext = os.path.splitext(file.filename)[1].lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            return jsonify({"error": f"不支持的文件类型，仅支持: {', '.join(ALLOWED_EXTENSIONS)}"}), 400
+        
+        # 生成唯一文件名
+        filename = f"{uuid.uuid4().hex}{ext}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        
+        # 保存文件
+        file.save(filepath)
+        
+        # 生成访问URL
+        image_url = url_for("get_image", filename=filename, _external=True)
+        
+        return jsonify({
+            "url": image_url,
+            "filename": filename,
+            "size": os.path.getsize(filepath)
+        })
+    except Exception as e:
+        return jsonify({"error": f"上传失败: {str(e)}"}), 500
+
+
+@app.route("/upload-directory", methods=["POST"])
+def upload_directory():
+    """上传目录下的图片文件，返回访问URL列表"""
+    # 注意：由于浏览器安全限制，无法直接通过API获取本地目录路径
+    # 这里实现为接受多个文件上传，模拟目录上传功能
+    if "files" not in request.files:
+        return jsonify({"error": "缺少files参数"}), 400
+    
+    files = request.files.getlist("files")
+    if not files:
+        return jsonify({"error": "未选择文件"}), 400
+    
+    uploaded_files = []
+    
+    try:
+        for file in files:
+            if file.filename == "":
+                continue
+            
+            # 获取文件扩展名
+            ext = os.path.splitext(file.filename)[1].lower()
+            if ext not in ALLOWED_EXTENSIONS:
+                continue  # 跳过不支持的文件类型
+            
+            # 生成唯一文件名
+            filename = f"{uuid.uuid4().hex}{ext}"
+            filepath = os.path.join(UPLOAD_FOLDER, filename)
+            
+            # 保存文件
+            file.save(filepath)
+            
+            # 生成访问URL
+            image_url = url_for("get_image", filename=filename, _external=True)
+            
+            uploaded_files.append({
+                "url": image_url,
+                "filename": filename,
+                "original_name": file.filename,
+                "size": os.path.getsize(filepath)
+            })
+        
+        if not uploaded_files:
+            return jsonify({"error": "没有上传成功的图片文件"}), 400
+        
+        return jsonify({
+            "files": uploaded_files,
+            "count": len(uploaded_files)
+        })
+    except Exception as e:
+        return jsonify({"error": f"上传失败: {str(e)}"}), 500
+
+
 if __name__ == "__main__":
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     app.run(host="0.0.0.0", port=5000, debug=False)
