@@ -1,14 +1,25 @@
 FROM python:3.11-alpine
 
-# 安装构建依赖
-RUN apk add --no-cache --virtual .build-deps \
+RUN apk add --no-cache \
+    libjpeg-turbo \
+    libwebp \
+    openjpeg \
+    tiff \
+    zlib \
+ && apk add --no-cache --virtual .build-deps \
     gcc \
-    musl-dev
+    musl-dev \
+    libjpeg-turbo-dev \
+    libwebp-dev \
+    openjpeg-dev \
+    tiff-dev \
+    zlib-dev
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --break-system-packages -r requirements.txt
+RUN pip install --no-cache-dir --break-system-packages -r requirements.txt \
+ && apk del .build-deps
 
 COPY app.py .
 
