@@ -13,3 +13,4 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
+      - GALLERY_PASSWORD=your_password_here  # 设置图库访问密码
