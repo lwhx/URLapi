@@ -959,7 +959,7 @@ def tuku():
             const data = await resp.json();
             if (data.success) {{
                 hideLogin();
-                loadImages();
+                loadImages(true);
             }} else {{
                 document.getElementById('loginError').style.display = 'block';
             }}
@@ -971,7 +971,7 @@ def tuku():
             if (needAuth) showLogin();
         }}
 
-        async function loadImages() {{
+        async function loadImages(skipAuthCheck = false) {{
             const gallery = document.getElementById('gallery');
             gallery.innerHTML = '<div class="loading">加载中...</div>';
             
@@ -979,7 +979,7 @@ def tuku():
                 const resp = await fetch('/images');
                 const data = await resp.json();
                 
-                if (resp.status === 401) {{
+                if (resp.status === 401 && !skipAuthCheck) {{
                     showLogin();
                     return;
                 }}

@@ -1,11 +1,9 @@
 version: '3.8'
 
 services:
-  image-to-base64:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: image-to-base64-api
+  urlapi:
+    image: ghcr.io/lwhx/urlapi:latest
+    container_name: urlapi
     ports:
       - "5000:5000"
     volumes:
@@ -13,4 +11,4 @@ services:
     restart: unless-stopped
     environment:
       - PYTHONUNBUFFERED=1
-      - GALLERY_PASSWORD=your_password_here  # 设置图库访问密码
+      - GALLERY_PASSWORD=your_password_here
