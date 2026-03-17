@@ -571,7 +571,7 @@ def get_image_info(filename: str) -> dict | None:
 
         return {
             "filename": filename,
-            "url": url_for("get_image", filename=filename, _external=True),
+            "url": f"/image/{filename}",
             "size": stat.st_size,
             "width": width,
             "height": height,
