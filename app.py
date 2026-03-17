@@ -750,168 +750,226 @@ def delete_multiple():
 @require_gallery_auth
 def gallery_list():
     """获取图库列表（HTML 页面）"""
-    try:
-        files = os.listdir(UPLOAD_FOLDER)
-
-        # 使用线程池并发处理图片信息
-        with ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE) as pool:
-            results = pool.map(get_image_info, files)
-            images = [img for img in results if img is not None]
-
-        images.sort(key=lambda x: x["created_time"], reverse=True)
-
-        html = """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>图库</title>
-            <style>
-                * { margin: 0; padding: 0; box-sizing: border-box; }
-                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; }
-                .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
-                .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
-                .header h1 { font-size: 28px; color: #333; }
-                .logout-btn { padding: 10px 20px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; }
-                .logout-btn:hover { background: #ff5252; }
-                .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
-                .image-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: transform 0.2s; }
-                .image-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-                .image-wrapper { position: relative; width: 100%; padding-bottom: 100%; overflow: hidden; }
-                .image-wrapper img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-                .image-info { padding: 12px; }
-                .image-name { font-size: 12px; color: #666; word-break: break-all; margin-bottom: 8px; }
-                .image-size { font-size: 12px; color: #999; margin-bottom: 8px; }
-                .delete-btn { width: 100%; padding: 8px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
-                .delete-btn:hover { background: #ff5252; }
-                .empty { text-align: center; padding: 60px 20px; color: #999; }
-                .select-all { margin-bottom: 20px; }
-                .select-all input { margin-right: 10px; }
-                .batch-delete { margin-bottom: 20px; }
-                .batch-delete button { padding: 10px 20px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; }
-                .batch-delete button:hover { background: #ff5252; }
-                .batch-delete button:disabled { background: #ccc; cursor: not-allowed; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h1>图库</h1>
-                    <button class="logout-btn" onclick="logout()">登出</button>
-                </div>
-
-                <div class="select-all">
-                    <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
-                    <label for="selectAll">全选</label>
-                </div>
-
-                <div class="batch-delete">
-                    <button onclick="batchDelete()" id="batchDeleteBtn" disabled>批量删除</button>
-                </div>
-
-                <div class="gallery" id="gallery"></div>
-                <div class="empty" id="empty" style="display: none;">暂无图片</div>
+    html = """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>图库</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; }
+            .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+            .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+            .header h1 { font-size: 28px; color: #333; }
+            .logout-btn { padding: 10px 20px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            .logout-btn:hover { background: #ff5252; }
+            .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+            .image-card { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); transition: transform 0.2s; }
+            .image-card:hover { transform: translateY(-4px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+            .image-wrapper { position: relative; width: 100%; padding-bottom: 100%; overflow: hidden; }
+            .image-wrapper img { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+            .image-info { padding: 12px; }
+            .image-name { font-size: 12px; color: #666; word-break: break-all; margin-bottom: 8px; }
+            .image-size { font-size: 12px; color: #999; margin-bottom: 8px; }
+            .delete-btn { width: 100%; padding: 8px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 12px; }
+            .delete-btn:hover { background: #ff5252; }
+            .empty { text-align: center; padding: 60px 20px; color: #999; }
+            .select-all { margin-bottom: 20px; }
+            .select-all input { margin-right: 10px; }
+            .batch-delete { margin-bottom: 20px; }
+            .batch-delete button { padding: 10px 20px; background: #ff6b6b; color: white; border: none; border-radius: 4px; cursor: pointer; }
+            .batch-delete button:hover { background: #ff5252; }
+            .batch-delete button:disabled { background: #ccc; cursor: not-allowed; }
+            .pagination { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 30px; }
+            .pagination button, .pagination span { padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: white; cursor: pointer; }
+            .pagination button:hover { background: #f0f0f0; }
+            .pagination button:disabled { background: #f5f5f5; cursor: not-allowed; color: #999; }
+            .pagination .current { background: #667eea; color: white; border-color: #667eea; }
+            .page-info { text-align: center; color: #666; margin-top: 20px; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>图库</h1>
+                <button class="logout-btn" onclick="logout()">登出</button>
             </div>
 
-            <script>
-                const images = """ + str(images).replace("'", '"') + """;
+            <div class="select-all">
+                <input type="checkbox" id="selectAll" onchange="toggleSelectAll()">
+                <label for="selectAll">全选</label>
+            </div>
 
-                function renderGallery() {
-                    const gallery = document.getElementById('gallery');
-                    const empty = document.getElementById('empty');
+            <div class="batch-delete">
+                <button onclick="batchDelete()" id="batchDeleteBtn" disabled>批量删除</button>
+            </div>
 
-                    if (images.length === 0) {
-                        empty.style.display = 'block';
+            <div class="gallery" id="gallery"></div>
+            <div class="empty" id="empty" style="display: none;">暂无图片</div>
+            <div class="page-info" id="pageInfo"></div>
+            <div class="pagination" id="pagination"></div>
+        </div>
+
+        <script>
+            let currentPage = 1;
+            let perPage = 20;
+            let totalPages = 0;
+            let totalImages = 0;
+
+            async function loadImages(page = 1) {
+                try {
+                    const response = await fetch(`/images?page=${page}&per_page=${perPage}`);
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        alert('加载失败: ' + data.error);
                         return;
                     }
 
-                    gallery.innerHTML = images.map(img => `
-                        <div class="image-card">
-                            <div class="image-wrapper">
-                                <img src="${img.url}" alt="${img.filename}">
-                            </div>
-                            <div class="image-info">
-                                <div class="image-name">${img.filename}</div>
-                                <div class="image-size">${(img.size / 1024).toFixed(2)} KB</div>
-                                <input type="checkbox" class="image-checkbox" value="${img.filename}">
-                                <button class="delete-btn" onclick="deleteImage('${img.filename}')">删除</button>
-                            </div>
+                    currentPage = data.page;
+                    totalPages = data.total_pages;
+                    totalImages = data.total;
+
+                    renderGallery(data.images);
+                    renderPagination();
+                    updatePageInfo();
+                } catch (e) {
+                    alert('加载失败: ' + e.message);
+                }
+            }
+
+            function renderGallery(images) {
+                const gallery = document.getElementById('gallery');
+                const empty = document.getElementById('empty');
+
+                if (images.length === 0) {
+                    gallery.innerHTML = '';
+                    empty.style.display = 'block';
+                    return;
+                }
+
+                empty.style.display = 'none';
+                gallery.innerHTML = images.map(img => `
+                    <div class="image-card">
+                        <div class="image-wrapper">
+                            <img src="${img.url}" alt="${img.filename}">
                         </div>
-                    `).join('');
+                        <div class="image-info">
+                            <div class="image-name">${img.filename}</div>
+                            <div class="image-size">${(img.size / 1024).toFixed(2)} KB</div>
+                            <input type="checkbox" class="image-checkbox" value="${img.filename}">
+                            <button class="delete-btn" onclick="deleteImage('${img.filename}')">删除</button>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            function renderPagination() {
+                const pagination = document.getElementById('pagination');
+                let html = '';
+
+                if (currentPage > 1) {
+                    html += `<button onclick="loadImages(1)">首页</button>`;
+                    html += `<button onclick="loadImages(${currentPage - 1})">上一页</button>`;
                 }
 
-                function deleteImage(filename) {
-                    if (!confirm('确定要删除此图片吗？')) return;
+                const start = Math.max(1, currentPage - 2);
+                const end = Math.min(totalPages, currentPage + 2);
 
-                    fetch('/delete', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filename })
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.success) {
-                            location.reload();
-                        } else {
-                            alert('删除失败: ' + data.error);
-                        }
-                    })
-                    .catch(e => alert('删除失败: ' + e));
+                if (start > 1) html += '<span>...</span>';
+
+                for (let i = start; i <= end; i++) {
+                    if (i === currentPage) {
+                        html += `<span class="current">${i}</span>`;
+                    } else {
+                        html += `<button onclick="loadImages(${i})">${i}</button>`;
+                    }
                 }
 
-                function toggleSelectAll() {
-                    const checked = document.getElementById('selectAll').checked;
-                    document.querySelectorAll('.image-checkbox').forEach(cb => cb.checked = checked);
-                    updateBatchDeleteBtn();
+                if (end < totalPages) html += '<span>...</span>';
+
+                if (currentPage < totalPages) {
+                    html += `<button onclick="loadImages(${currentPage + 1})">下一页</button>`;
+                    html += `<button onclick="loadImages(${totalPages})">末页</button>`;
                 }
 
-                function updateBatchDeleteBtn() {
-                    const checked = document.querySelectorAll('.image-checkbox:checked').length > 0;
-                    document.getElementById('batchDeleteBtn').disabled = !checked;
+                pagination.innerHTML = html;
+            }
+
+            function updatePageInfo() {
+                const pageInfo = document.getElementById('pageInfo');
+                if (totalImages === 0) {
+                    pageInfo.textContent = '';
+                } else {
+                    pageInfo.textContent = `共 ${totalImages} 张图片，第 ${currentPage} / ${totalPages} 页`;
                 }
+            }
 
-                function batchDelete() {
-                    const filenames = Array.from(document.querySelectorAll('.image-checkbox:checked')).map(cb => cb.value);
-                    if (filenames.length === 0) return;
-                    if (!confirm(`确定要删除 ${filenames.length} 张图片吗？`)) return;
+            function deleteImage(filename) {
+                if (!confirm('确定要删除此图片吗？')) return;
 
-                    fetch('/delete-multiple', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filenames })
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.deleted_count > 0) {
-                            location.reload();
-                        } else {
-                            alert('删除失败');
-                        }
-                    })
-                    .catch(e => alert('删除失败: ' + e));
-                }
+                fetch('/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        loadImages(currentPage);
+                    } else {
+                        alert('删除失败: ' + data.error);
+                    }
+                })
+                .catch(e => alert('删除失败: ' + e));
+            }
 
-                function logout() {
-                    fetch('/gallery-logout', { method: 'POST' })
-                    .then(() => location.href = '/tuku')
-                    .catch(e => alert('登出失败: ' + e));
-                }
+            function toggleSelectAll() {
+                const checked = document.getElementById('selectAll').checked;
+                document.querySelectorAll('.image-checkbox').forEach(cb => cb.checked = checked);
+                updateBatchDeleteBtn();
+            }
 
-                document.querySelectorAll('.image-checkbox').forEach(cb => {
-                    cb.addEventListener('change', updateBatchDeleteBtn);
-                });
+            function updateBatchDeleteBtn() {
+                const checked = document.querySelectorAll('.image-checkbox:checked').length > 0;
+                document.getElementById('batchDeleteBtn').disabled = !checked;
+            }
 
-                renderGallery();
-            </script>
-        </body>
-        </html>
-        """
-        return html, 200, {"Content-Type": "text/html; charset=utf-8"}
+            function batchDelete() {
+                const filenames = Array.from(document.querySelectorAll('.image-checkbox:checked')).map(cb => cb.value);
+                if (filenames.length === 0) return;
+                if (!confirm(`确定要删除 ${filenames.length} 张图片吗？`)) return;
 
-    except Exception as exc:
-        logger.error("获取图库列表异常", exc_info=True)
-        return jsonify({"error": "获取列表失败"}), 500
+                fetch('/delete-multiple', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filenames })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.deleted_count > 0) {
+                        loadImages(currentPage);
+                    } else {
+                        alert('删除失败');
+                    }
+                })
+                .catch(e => alert('删除失败: ' + e));
+            }
+
+            function logout() {
+                fetch('/gallery-logout', { method: 'POST' })
+                .then(() => location.href = '/tuku')
+                .catch(e => alert('登出失败: ' + e));
+            }
+
+            loadImages(1);
+        </script>
+    </body>
+    </html>
+    """
+    return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
 
 @app.route("/tuku", methods=["GET"])
