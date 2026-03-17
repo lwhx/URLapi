@@ -586,19 +586,38 @@ def get_image_info(filename: str) -> dict | None:
 @app.route("/images", methods=["GET"])
 @require_gallery_auth
 def list_images():
-    """获取图片列表（优化 4: 使用线程池并发处理）"""
+    """获取图片列表（支持分页）"""
     try:
+        # 获取分页参数
+        page = request.args.get("page", 1, type=int)
+        per_page = request.args.get("per_page", 20, type=int)
+        
+        # 限制每页数量
+        per_page = min(per_page, 100)
+        
         files = os.listdir(UPLOAD_FOLDER)
 
         # 使用线程池并发处理图片信息
         with ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE) as pool:
             results = pool.map(get_image_info, files)
-            images = [img for img in results if img is not None]
+            all_images = [img for img in results if img is not None]
 
         # 按创建时间倒序排列
-        images.sort(key=lambda x: x["created_time"], reverse=True)
-
-        return jsonify({"images": images, "total": len(images)}), 200
+        all_images.sort(key=lambda x: x["created_time"], reverse=True)
+        
+        # 分页
+        total = len(all_images)
+        start = (page - 1) * per_page
+        end = start + per_page
+        images = all_images[start:end]
+        
+        return jsonify({
+            "images": images,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page
+        }), 200
 
     except Exception as exc:
         logger.error("获取图片列表异常", exc_info=True)
