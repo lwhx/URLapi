@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 *.pyo
 .pytest_cache/
+.claude/
+OPTIMIZATION_SUMMARY.md
+DOCKER_COMPOSE_UPDATE.md
+test_app.py
