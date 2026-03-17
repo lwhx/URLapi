@@ -537,6 +537,7 @@ def url_to_base64():
 
 
 @app.route("/get-image/<filename>", methods=["GET"])
+@limiter.exempt
 def get_image(filename: str):
     """获取图片"""
     try:
