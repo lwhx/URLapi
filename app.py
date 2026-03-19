@@ -33,11 +33,17 @@ app = Flask(__name__)
 
 # 优化 1: 配置环境变量化
 UPLOAD_FOLDER = os.environ.get("UPLOAD_FOLDER", "/app/uploads")
+THUMBNAIL_FOLDER = os.path.join(UPLOAD_FOLDER, ".thumbnails")
 MAX_FILE_SIZE = int(os.environ.get("MAX_FILE_SIZE", str(100 * 1024 * 1024)))
 DOWNLOAD_TIMEOUT_SECONDS = int(os.environ.get("DOWNLOAD_TIMEOUT_SECONDS", "30"))
 DOWNLOAD_CHUNK_SIZE = int(os.environ.get("DOWNLOAD_CHUNK_SIZE", str(1024 * 1024)))
 MAX_CONTENT_LENGTH = int(os.environ.get("MAX_CONTENT_LENGTH", str(140 * 1024 * 1024)))
 THREAD_POOL_SIZE = int(os.environ.get("THREAD_POOL_SIZE", "4"))
+THUMBNAIL_SIZE = int(os.environ.get("THUMBNAIL_SIZE", "300"))
+CACHE_TTL = int(os.environ.get("CACHE_TTL", "60"))
+
+# 确保缩略图目录存在
+os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
 
@@ -48,6 +54,25 @@ SUPPORTED_IMAGE_FORMATS = {
     "GIF": ("image/gif", ".gif"),
     "WEBP": ("image/webp", ".webp"),
 }
+
+# 优化 3: 简单内存缓存（用于图片列表）
+cache = {"images": None, "timestamp": 0}
+
+
+def generate_thumbnail(filepath: str, filename: str) -> bool:
+    """生成缩略图"""
+    try:
+        thumbnail_path = os.path.join(THUMBNAIL_FOLDER, filename)
+        if os.path.exists(thumbnail_path):
+            return True
+
+        with Image.open(filepath) as img:
+            img.thumbnail((THUMBNAIL_SIZE, THUMBNAIL_SIZE), Image.Resampling.LANCZOS)
+            img.save(thumbnail_path, optimize=True, quality=85)
+        return True
+    except Exception as exc:
+        logger.warning("生成缩略图失败 %s: %s", filename, str(exc))
+        return False
 
 # 图库密码认证（通过环境变量设置，默认为空表示不需要密码）
 GALLERY_PASSWORD = os.environ.get("GALLERY_PASSWORD", "")
@@ -218,11 +243,13 @@ def build_uploaded_file_payload(
 
 
 def save_uploaded_image(image_data: bytes, extension: str) -> tuple[str, int]:
-    """保存图片并返回文件名和大小"""
+    """保存图片并返回文件名和大小，同时生成缩略图"""
     filename = f"{uuid.uuid4().hex}{extension}"
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     with open(filepath, "wb") as f:
         f.write(image_data)
+    # 生成缩略图
+    generate_thumbnail(filepath, filename)
     logger.info("图片已保存: %s (大小: %s)", filename, format_size(len(image_data)))
     return filename, len(image_data)
 
@@ -555,6 +582,30 @@ def get_image(filename: str):
         return jsonify({"error": "获取失败"}), 500
 
 
+@app.route("/thumbnail/<filename>", methods=["GET"])
+@limiter.exempt
+def get_thumbnail(filename: str):
+    """获取缩略图"""
+    try:
+        # 防止路径遍历攻击
+        if ".." in filename or "/" in filename or "\\" in filename:
+            return jsonify({"error": "非法的文件名"}), 400
+
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        if not os.path.exists(filepath):
+            return jsonify({"error": "文件不存在"}), 404
+
+        thumbnail_path = os.path.join(THUMBNAIL_FOLDER, filename)
+        if not os.path.exists(thumbnail_path):
+            # 如果缩略图不存在，实时生成
+            generate_thumbnail(filepath, filename)
+
+        return send_from_directory(THUMBNAIL_FOLDER, filename)
+    except Exception as exc:
+        logger.error("获取缩略图异常", exc_info=True)
+        return jsonify({"error": "获取失败"}), 500
+
+
 def get_image_info(filename: str) -> dict | None:
     """获取单个图片信息（用于并发处理）"""
     try:
@@ -586,8 +637,9 @@ def get_image_info(filename: str) -> dict | None:
 @app.route("/images", methods=["GET"])
 @require_gallery_auth
 def list_images():
-    """获取图片列表（支持分页）"""
+    """获取图片列表（支持分页，使用缓存）"""
     try:
+        import time
         # 获取分页参数
         page = request.args.get("page", 1, type=int)
         per_page = request.args.get("per_page", 20, type=int)
@@ -595,13 +647,18 @@ def list_images():
         # 限制每页数量
         per_page = min(per_page, 100)
         
-        files = os.listdir(UPLOAD_FOLDER)
-
-        # 使用线程池并发处理图片信息
-        with ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE) as pool:
-            results = pool.map(get_image_info, files)
-            all_images = [img for img in results if img is not None]
-
+        # 检查缓存是否有效（60秒 TTL）
+        current_time = time.time()
+        if cache["images"] is None or (current_time - cache["timestamp"]) > CACHE_TTL:
+            files = os.listdir(UPLOAD_FOLDER)
+            # 使用线程池并发处理图片信息
+            with ThreadPoolExecutor(max_workers=THREAD_POOL_SIZE) as pool:
+                results = pool.map(get_image_info, files)
+                cache["images"] = [img for img in results if img is not None]
+            cache["timestamp"] = current_time
+        
+        # 使用缓存数据
+        all_images = cache["images"]
         # 按创建时间倒序排列
         all_images.sort(key=lambda x: x["created_time"], reverse=True)
         
@@ -687,6 +744,12 @@ def delete_image():
             return jsonify({"error": "文件不存在"}), 404
 
         os.remove(filepath)
+        # 删除缩略图
+        thumbnail_path = os.path.join(THUMBNAIL_FOLDER, filename)
+        if os.path.exists(thumbnail_path):
+            os.remove(thumbnail_path)
+        # 清除缓存
+        cache["images"] = None
         logger.info("图片已删除: %s", filename)
         return jsonify({"success": True}), 200
 
@@ -725,12 +788,19 @@ def delete_multiple():
                     continue
 
                 os.remove(filepath)
+                # 删除缩略图
+                thumbnail_path = os.path.join(THUMBNAIL_FOLDER, filename)
+                if os.path.exists(thumbnail_path):
+                    os.remove(thumbnail_path)
                 deleted.append(filename)
                 logger.info("图片已删除: %s", filename)
 
             except Exception as exc:
                 logger.error("删除图片 %s 异常", filename, exc_info=True)
                 failed.append({"filename": filename, "error": "删除失败"})
+        
+        # 清除缓存
+        cache["images"] = None
 
         return jsonify(
             {
