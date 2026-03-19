@@ -363,7 +363,7 @@ def download_image(url: str) -> tuple[bytes, ImageMetadata]:
 
 
 @app.route("/upload", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("100 per minute")
 def upload():
     """上传 Base64 编码的图片"""
     try:
@@ -407,7 +407,7 @@ def upload():
 
 
 @app.route("/upload-file", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("100 per minute")
 def upload_file():
     """上传图片文件"""
     try:
@@ -432,7 +432,7 @@ def upload_file():
 
 
 @app.route("/upload-directory", methods=["POST"])
-@limiter.limit("5 per minute")
+@limiter.limit("50 per minute")
 def upload_directory():
     """批量上传图片文件"""
     try:
@@ -490,7 +490,7 @@ def upload_directory():
 
 
 @app.route("/file-to-base64", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("100 per minute")
 def file_to_base64():
     """将上传的文件转换为 Base64"""
     try:
@@ -522,7 +522,7 @@ def file_to_base64():
 
 
 @app.route("/url-to-base64", methods=["POST"])
-@limiter.limit("10 per minute")
+@limiter.limit("100 per minute")
 def url_to_base64():
     """从 URL 下载图片并转换为 Base64"""
     try:
@@ -682,7 +682,7 @@ def list_images():
 
 
 @app.route("/gallery-auth", methods=["POST"])
-@limiter.limit("5 per minute")
+@limiter.limit("50 per minute")
 def gallery_auth():
     """图库认证"""
     try:
@@ -723,7 +723,7 @@ def gallery_logout():
 
 @app.route("/delete", methods=["POST"])
 @require_gallery_auth
-@limiter.limit("20 per minute")
+@limiter.limit("200 per minute")
 def delete_image():
     """删除单个图片"""
     try:
@@ -760,7 +760,7 @@ def delete_image():
 
 @app.route("/delete-multiple", methods=["POST"])
 @require_gallery_auth
-@limiter.limit("10 per minute")
+@limiter.limit("100 per minute")
 def delete_multiple():
     """批量删除图片"""
     try:
